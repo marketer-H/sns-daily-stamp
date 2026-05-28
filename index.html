@@ -306,11 +306,14 @@
   <p id="setupDesc">이름이랑 매일 할 것들을 입력해줘!</p>
 
   <div class="notice-box">
-    💡 같은 이름으로 다른 기기에서 접속하면 데이터가 자동으로 연결돼요!
+    💡 같은 닉네임 + PIN으로 다른 기기에서 접속하면 데이터가 자동으로 연결돼요!
   </div>
 
-  <div class="setup-label">이름 (닉네임)</div>
+  <div class="setup-label">닉네임</div>
   <input class="setup-input" id="setupName" placeholder="예: 권동글" maxlength="10">
+
+  <div class="setup-label">PIN 번호 (숫자 4자리)</div>
+  <input class="setup-input" id="setupPin" type="password" inputmode="numeric" placeholder="●●●●" maxlength="4">
 
   <div class="setup-label">매일 할 것 1</div>
   <div class="track-row">
@@ -327,9 +330,13 @@
   <button class="setup-btn" id="setupSaveBtn">도장판 만들기 💫</button>
 
   <div id="confirmBox" style="display:none; margin-top:14px; background:#fff7ed; border:1.5px solid #fed7aa; border-radius:14px; padding:14px; text-align:left;">
-    <p style="font-size:0.83rem; color:#92400e; font-weight:700; margin-bottom:10px;">⚠️ 이미 있는 닉네임이에요!<br><span style="font-weight:400;">혹시 내 계정인가요?</span></p>
+    <p style="font-size:0.83rem; color:#92400e; font-weight:700; margin-bottom:4px;">⚠️ 이미 있는 닉네임이에요!</p>
+    <p style="font-size:0.8rem; color:#92400e; margin-bottom:10px;">내 계정이면 PIN을 입력해줘.</p>
+    <input id="pinInput" type="password" inputmode="numeric" maxlength="4" placeholder="PIN 4자리"
+      style="width:100%; border:1.8px solid #fed7aa; border-radius:10px; padding:9px 12px; font-size:16px; font-family:inherit; outline:none; margin-bottom:8px; color:#92400e;">
+    <p id="pinError" style="display:none; font-size:0.75rem; color:#dc2626; margin-bottom:8px;">❌ PIN이 틀렸어요!</p>
     <div style="display:flex; gap:8px;">
-      <button id="confirmLoad" style="flex:1; padding:9px; border:none; border-radius:10px; background:#16a34a; color:white; font-weight:900; font-family:inherit; font-size:0.82rem; cursor:pointer;">내 계정이에요 ✅</button>
+      <button id="confirmLoad" style="flex:1; padding:9px; border:none; border-radius:10px; background:#16a34a; color:white; font-weight:900; font-family:inherit; font-size:0.82rem; cursor:pointer;">확인 ✅</button>
       <button id="confirmNew"  style="flex:1; padding:9px; border:none; border-radius:10px; background:#f3f4f6; color:#374151; font-weight:700; font-family:inherit; font-size:0.82rem; cursor:pointer;">다른 이름 쓸게요</button>
     </div>
   </div>
@@ -425,6 +432,8 @@
   function showSetup(prefill) {
     hide('loadingScreen'); hide('mainScreen');
     show('setupScreen');
+    document.getElementById('confirmBox').style.display = 'none';
+    document.getElementById('setupPin').value = '';
     if (prefill) {
       document.getElementById('setupName').value  = prefill.name || '';
       document.getElementById('emoji1').value     = prefill.items?.[0]?.emoji || '✍️';
@@ -434,10 +443,24 @@
     }
   }
 
-  let pendingCfg = null;
+  async function hashPin(pin) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
 
-  async function createAndEnter(cfg) {
-    await userDoc(cfg.name).set({ config: cfg }, { merge: true });
+  let pendingCfg = null;
+  let pendingSnap = null;
+
+  async function enterWithSnap(snap, cfg) {
+    const finalCfg = (snap && snap.exists && snap.data().config) ? snap.data().config : cfg;
+    localStorage.setItem(NAME_KEY, finalCfg.name);
+    monthCache = {};
+    currentName = finalCfg.name;
+    showMain(finalCfg);
+  }
+
+  async function createAndEnter(cfg, pinHash) {
+    await userDoc(cfg.name).set({ config: cfg, pinHash }, { merge: true });
     localStorage.setItem(NAME_KEY, cfg.name);
     monthCache = {};
     currentName = cfg.name;
@@ -445,18 +468,29 @@
   }
 
   document.getElementById('confirmLoad').addEventListener('click', async () => {
-    if (!pendingCfg) return;
-    const snap = await userDoc(pendingCfg.name).get();
-    const cfg  = (snap.exists && snap.data().config) ? snap.data().config : pendingCfg;
-    localStorage.setItem(NAME_KEY, cfg.name);
-    monthCache = {};
-    currentName = cfg.name;
-    showMain(cfg);
+    if (!pendingCfg || !pendingSnap) return;
+    const pin = document.getElementById('pinInput').value.trim();
+    if (!pin) { document.getElementById('pinInput').focus(); return; }
+
+    const pinError = document.getElementById('pinError');
+    pinError.style.display = 'none';
+
+    const storedHash = pendingSnap.data().pinHash;
+    const inputHash  = await hashPin(pin);
+    if (inputHash !== storedHash) {
+      pinError.style.display = 'block';
+      document.getElementById('pinInput').value = '';
+      document.getElementById('pinInput').focus();
+      return;
+    }
+    await enterWithSnap(pendingSnap, pendingCfg);
   });
 
   document.getElementById('confirmNew').addEventListener('click', () => {
-    pendingCfg = null;
+    pendingCfg = null; pendingSnap = null;
     document.getElementById('confirmBox').style.display = 'none';
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinError').style.display = 'none';
     document.getElementById('setupName').value = '';
     document.getElementById('setupName').focus();
   });
@@ -464,7 +498,9 @@
   document.getElementById('setupSaveBtn').addEventListener('click', async () => {
     const btn  = document.getElementById('setupSaveBtn');
     const name = document.getElementById('setupName').value.trim();
+    const pin  = document.getElementById('setupPin').value.trim();
     if (!name) { document.getElementById('setupName').focus(); return; }
+    if (!pin || pin.length < 4) { document.getElementById('setupPin').focus(); return; }
 
     const e1  = document.getElementById('emoji1').value.trim() || '✍️';
     const l1  = document.getElementById('label1').value.trim() || '항목1';
@@ -478,11 +514,15 @@
 
     try {
       const snap = await userDoc(name).get();
-      if (snap.exists && snap.data().config) {
-        pendingCfg = cfg;
+      if (snap.exists && snap.data().pinHash) {
+        pendingCfg = cfg; pendingSnap = snap;
+        document.getElementById('pinInput').value = '';
+        document.getElementById('pinError').style.display = 'none';
         document.getElementById('confirmBox').style.display = 'block';
+        document.getElementById('pinInput').focus();
       } else {
-        await createAndEnter(cfg);
+        const pinHash = await hashPin(pin);
+        await createAndEnter(cfg, pinHash);
       }
     } catch (e) {
       console.error(e);
