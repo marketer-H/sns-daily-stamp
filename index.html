@@ -85,6 +85,7 @@
 
     .track-label-input {
       flex: 1;
+      min-width: 0;
       border: 1.8px solid #a7f3d0;
       border-radius: 12px;
       padding: 10px 14px;
@@ -111,7 +112,23 @@
       transition: background 0.15s;
     }
 
-    .setup-btn:hover { background: #6d28d9; }
+    .setup-btn:hover { background: #15803d; }
+
+    @media (max-width: 400px) {
+      #setupScreen {
+        margin: 24px auto 0;
+        padding: 28px 18px;
+      }
+
+      .setup-input, .track-label-input {
+        font-size: 16px; /* iOS 자동 확대 방지 */
+      }
+
+      .track-emoji-input {
+        width: 44px;
+        font-size: 16px;
+      }
+    }
 
     /* ───── 메인 화면 ───── */
     #mainScreen { display: none; }
@@ -120,10 +137,11 @@
       text-align: center;
       margin-bottom: 24px;
       position: relative;
+      padding-top: 36px;
     }
 
     header h1 {
-      font-size: 1.6rem;
+      font-size: 1.4rem;
       font-weight: 900;
       color: #15803d;
       letter-spacing: -0.5px;
@@ -228,7 +246,8 @@
       padding: 12px 16px;
       text-align: center;
       box-shadow: 0 2px 10px rgba(22,163,74,0.1);
-      min-width: 82px;
+      flex: 1;
+      min-width: 0;
     }
 
     .stat-card .num {
@@ -275,6 +294,16 @@
       display: grid;
       grid-template-columns: repeat(7, 1fr);
       gap: 6px;
+    }
+
+    @media (max-width: 400px) {
+      .calendar-grid { gap: 3px; }
+      .day-cell { padding: 4px 2px 6px; min-height: 70px; border-radius: 10px; }
+      .stamp-btn { height: 20px; font-size: 0.72rem; border-radius: 6px; }
+      .stats-bar { gap: 8px; }
+      .stat-card { padding: 10px 8px; }
+      .stat-card .num { font-size: 1.4rem; }
+      .stat-card .label { font-size: 0.62rem; }
     }
 
     .day-cell {
