@@ -325,6 +325,14 @@
   </div>
 
   <button class="setup-btn" id="setupSaveBtn">도장판 만들기 💫</button>
+
+  <div id="confirmBox" style="display:none; margin-top:14px; background:#fff7ed; border:1.5px solid #fed7aa; border-radius:14px; padding:14px; text-align:left;">
+    <p style="font-size:0.83rem; color:#92400e; font-weight:700; margin-bottom:10px;">⚠️ 이미 있는 닉네임이에요!<br><span style="font-weight:400;">혹시 내 계정인가요?</span></p>
+    <div style="display:flex; gap:8px;">
+      <button id="confirmLoad" style="flex:1; padding:9px; border:none; border-radius:10px; background:#16a34a; color:white; font-weight:900; font-family:inherit; font-size:0.82rem; cursor:pointer;">내 계정이에요 ✅</button>
+      <button id="confirmNew"  style="flex:1; padding:9px; border:none; border-radius:10px; background:#f3f4f6; color:#374151; font-weight:700; font-family:inherit; font-size:0.82rem; cursor:pointer;">다른 이름 쓸게요</button>
+    </div>
+  </div>
 </div>
 
 <div id="mainScreen">
@@ -424,36 +432,63 @@
     }
   }
 
+  let pendingCfg = null;
+
+  async function createAndEnter(cfg) {
+    await userDoc(cfg.name).set({ config: cfg }, { merge: true });
+    localStorage.setItem(NAME_KEY, cfg.name);
+    monthCache = {};
+    currentName = cfg.name;
+    showMain(cfg);
+  }
+
+  document.getElementById('confirmLoad').addEventListener('click', async () => {
+    if (!pendingCfg) return;
+    const snap = await userDoc(pendingCfg.name).get();
+    const cfg  = (snap.exists && snap.data().config) ? snap.data().config : pendingCfg;
+    localStorage.setItem(NAME_KEY, cfg.name);
+    monthCache = {};
+    currentName = cfg.name;
+    showMain(cfg);
+  });
+
+  document.getElementById('confirmNew').addEventListener('click', () => {
+    pendingCfg = null;
+    document.getElementById('confirmBox').style.display = 'none';
+    document.getElementById('setupName').value = '';
+    document.getElementById('setupName').focus();
+  });
+
   document.getElementById('setupSaveBtn').addEventListener('click', async () => {
     const btn  = document.getElementById('setupSaveBtn');
     const name = document.getElementById('setupName').value.trim();
     if (!name) { document.getElementById('setupName').focus(); return; }
 
-    const e1 = document.getElementById('emoji1').value.trim() || '✍️';
-    const l1 = document.getElementById('label1').value.trim() || '항목1';
-    const e2 = document.getElementById('emoji2').value.trim() || '🧵';
-    const l2 = document.getElementById('label2').value.trim() || '항목2';
+    const e1  = document.getElementById('emoji1').value.trim() || '✍️';
+    const l1  = document.getElementById('label1').value.trim() || '항목1';
+    const e2  = document.getElementById('emoji2').value.trim() || '🧵';
+    const l2  = document.getElementById('label2').value.trim() || '항목2';
     const cfg = { name, items: [{ emoji: e1, label: l1 }, { emoji: e2, label: l2 }] };
 
     btn.disabled = true;
-    btn.textContent = '저장 중...';
+    btn.textContent = '확인 중...';
+    document.getElementById('confirmBox').style.display = 'none';
 
     try {
       const snap = await userDoc(name).get();
-      let finalCfg = cfg;
       if (snap.exists && snap.data().config) {
-        // 기존 유저 → 기존 설정 불러오기 (항목 커스텀이 바뀌었으면 덮어씀)
-        finalCfg = cfg;
+        pendingCfg = cfg;
+        document.getElementById('confirmBox').style.display = 'block';
+      } else {
+        await createAndEnter(cfg);
       }
-      await userDoc(name).set({ config: finalCfg }, { merge: true });
-      localStorage.setItem(NAME_KEY, name);
-      monthCache = {};
-      currentName = name;
-      showMain(finalCfg);
     } catch (e) {
       console.error(e);
       btn.textContent = '오류 발생 😢';
-      setTimeout(() => { btn.disabled = false; btn.textContent = '도장판 만들기 💫'; }, 2000);
+      setTimeout(() => { btn.textContent = '도장판 만들기 💫'; }, 2000);
+    } finally {
+      btn.disabled = false;
+      if (btn.textContent === '확인 중...') btn.textContent = '도장판 만들기 💫';
     }
   });
 
